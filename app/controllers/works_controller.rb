@@ -2,6 +2,7 @@ class WorksController < ApplicationController
   # We should always be able to tell what category
   # of work we're dealing with
   before_action :category_from_work, except: [:root, :index, :new, :create]
+  skip_before_action :require_login, only: [:root]
 
   def root
     @albums = Work.best_albums
@@ -38,6 +39,9 @@ class WorksController < ApplicationController
   end
 
   def edit
+    unless check_user_creator
+      redirect_to root_path
+    end
   end
 
   def update
@@ -55,10 +59,13 @@ class WorksController < ApplicationController
   end
 
   def destroy
-    @work.destroy
-    flash[:status] = :success
-    flash[:result_text] = "Successfully destroyed #{@media_category.singularize} #{@work.id}"
-    redirect_to root_path
+    if check_user_creator
+      @work.destroy
+      flash[:success] = :success
+      flash[:result_text] = "Successfully deleted #{@media_category.singularize} #{@work.id}"
+    else
+      redirect_to(fallback_location: root_path)
+    end
   end
 
   def upvote
@@ -88,9 +95,20 @@ class WorksController < ApplicationController
     redirect_back fallback_location: work_path(@work), status: status
   end
 
-private
+  private
   def media_params
-    params.require(:work).permit(:title, :category, :creator, :description, :publication_year)
+    params.require(:work).permit(:title, :category, :creator, :description, :publication_year, :user_creator)
+  end
+
+  def check_user_creator
+    current_user = User.find_by(id: session[:user_id]).id
+
+    if current_user != @work.user_creator
+      flash[:status] = :failure
+      flash[:result_text] = "You are not the owner of this item."
+      return false
+    end
+    return true
   end
 
   def category_from_work
